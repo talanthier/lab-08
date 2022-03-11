@@ -124,6 +124,20 @@ As we see, we have a p-value of very close to 0 (at least to 3 significant digit
 
 ### Model Fit
 
+Now we will assess the fit of our full model.
+
+```{r}
+gss <- gss %>% 
+  mutate(obs_num = 1:n())
+
+pred_probs <- as_tibble(predict(full_model, type = 'probs')) %>%
+  mutate(obs_num = 1:n())
+
+full_model_aug <- inner_join(gss, pred_probs, by = 'obs_num') %>%
+  mutate(preds = predict(full_model, type = 'class'))
+```
+
+
 
 
 
