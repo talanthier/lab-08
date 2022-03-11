@@ -1,0 +1,129 @@
+---
+title: "STAT 108: Lab 8"
+author: "Tim Lanthier"
+date: "3/10/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Lab 8: Multinomial Logistic Regression
+
+```{r message=FALSE}
+library(tidyverse)
+library(nnet)
+library(knitr)
+library(broom)
+library(patchwork)
+```
+In this lab we will be using data from the 2016 General Social Survey. Here we will use multinomial regression to understand the relationship between political views and a person's attitudes towards government spending on mass transportation.
+
+```{r}
+gss <- read_csv("data/gss2016.csv",
+  na = c("", "Don't know", "No answer", 
+         "Not applicable"), 
+         guess_max = 2867) %>%
+  select(natmass, age, sex, sei10, region, polviews) %>%
+  drop_na()
+
+glimpse(gss)
+```
+
+Here we will be trying to predict `natmass`, which is each person's response to the following prompt:
+
+>“We are faced with many problems in this country, none of which can be solved easily or inexpensively. I’m going to name some of these problems, and for each one I’d like you to tell me whether you think we’re spending too much money on it, too little money, or about the right amount…are we spending too much, too little, or about the right amount on mass transportation?”
+
+Note the `polviews` is the response to the following prompt:
+
+>“We hear a lot of talk these days about liberals and conservatives. I’m going to show you a seven-point scale on which the political views that people might hold are arranged from extremely liberal - point 1 - to extremely conservative - point 7. Where would you place yourself on this scale?”
+
+### Exploratory Data Analysis
+
+We will start by converting `natmass` to a factor with "About right" as the baseline. We're also going to reorder the levels for `polviews` so the ordering makes more sense.
+
+```{r}
+gss <- gss %>%
+  mutate(natmass = relevel(as.factor(natmass), "About right"),
+         polviews = fct_relevel(polviews, 'Extremely liberal', 'Liberal', 'Slightly liberal', 
+                                                   'Moderate', 'Slghtly conservative', 'Conservative', 'Extrmly conservative'))
+```
+
+```{r}
+ggplot(data = gss, aes(natmass)) +
+  geom_bar() +
+  labs(x = 'Response to Mass Transportation Prompt')
+  
+
+ggplot(data = gss, aes(polviews)) +
+  geom_bar() +
+  labs(x = 'Political Views')+
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+So here it looks like most people in the dataset identify themselves as moderate. Also most participants appear to think that the government is either spending "about much" or "too little" on mass transportation projects. Now we will look at the interaction between these 2 variables.
+
+```{r}
+ggplot(data = gss, aes(fill = natmass, x = polviews)) +
+  geom_bar(position = 'fill') + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = 'Political Views vs Mass Transportation Response', x = 'Political Views')
+```
+Unsurprisingly, there appears to be a pretty clear relationship between political views and their thoughts on government spending on mass transportation. It appears that the proportion of those who's response to the mass transportation prompt is "about right" or "too much" is larger for those who identify themselves as more conservative. Meanwhile there is a larger proportion of those who had the response of "too little" for those who identify themselves as more liberal. 
+
+Now we will investigate `age`. First we will convert `age` to a numeric variable. Note that we currently have an age for "89 or older". So we will treat all those who are "89 or older" as just 89. The distribution for `age` is as follows:
+
+```{r}
+gss['age'][gss['age'] == '89 or older'] = '89'
+gss <- gss %>%
+  mutate(age = as.numeric(age))
+
+ggplot(data = gss, aes(age)) +
+  geom_histogram(binwidth = 2) +
+  labs(x = 'Age', title = 'Distribution of Age')
+```
+
+### Multinomial Logistic Regression Model
+
+Now we will fit a model using `age`, `sex`, `sei10`, and `region` to understand the difference in opinions on mass transportation government spending. Seeing as `natmass` contains 3 different responses. Since there are more than 2 possible responses, it would be inappropriate to us Logistic Regression. Hence a multinomial logistic regression model would be more appropriate.
+
+So the interpretations of the intercept make more sense, we will also be using `age_cent` (`age` centered about its median) instead of `age`. We will use the median since the mean likely will not be an integer and we want to keep `age_cent` as integer values. Seeing as `age` doesn't appear to be heavily skewed, using the median instead of the mean will have little impact on our model.
+
+```{r}
+gss <- gss %>% 
+  mutate(age_cent = age - median(age),
+         sex = as.factor(sex),
+         region = as.factor(region))
+
+model <- multinom(natmass ~ age_cent + sex + sei10 + region, data = gss)
+
+tidy(model, conf.int = TRUE, exponentiate = FALSE) %>% 
+  kable(digits = 3, format = 'markdown')
+```
+
+The model for the log odds is shown above. We have an intercept for "too much" of -1.630. This means that a person who is of median age (49 in our dataset), female, from the East North Central region, and with a Social Economic Index of 0 will have odds of having the opinion "Too much" over "About right" of $e^{-1.63} = 0.196$.
+ 
+Now we also have a coefficient for `age_cent` in the "too little" part of our model of 0.004. This means that holding all else constant, if the same person were to be one year older, the odds of having the opinion "too little" over "about right" would be multiplied by a factor of $e^{0.004} = 1.004$ from the original level.
+
+Now we will examine the effect of political views. To do this, we will using a Chi-squared test to check whether it would be appropriate to add `polviews` to our model. If we let $\beta_{polviews}$ be the coefficient for `polviews` in our regression model we have the following hypotheses.
+\begin{align*}
+  H_0: & \beta_{polviews} = 0 \\
+  H_a: & \beta_{polviews} \neq 0
+\end{align*}
+So we have the null hypothesis that the true coefficient for `polviews` would be 0. That is `polviews` is an insignificant predictor of the response to the survey. Meanwhile the alternate hypothesis is that the true coefficient is nonzero. That is `polviews` is a significant predictor of the response to the survey.
+
+```{r}
+full_model <- multinom(natmass ~ age_cent + sex + sei10 + region + polviews, data = gss)
+
+anova(model, full_model, test = "Chisq") %>%
+  kable(format = "markdown", digits = 3)
+```
+As we see, we have a p-value of very close to 0 (at least to 3 significant digits). Since this is the case, we have sufficient evidence to reject the null hypothesis that $\beta_{polviews} = 0$. Hence `polviews` is a significant predictor of `natmass`. Thus for the remainder of the lab we will be using `full_model` which includes `polviews`.
+
+### Model Fit
+
+
+
+
