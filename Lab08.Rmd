@@ -195,4 +195,14 @@ tidy(full_model, conf.int = TRUE) %>%
 ```
 Looking at our model, we see the coefficient for the political views for Too little appear to all be negative with those more liberal closer to 0. This suggests that more conservative political views are associated with a lower odds of the response to the prompt being `Too little`. Meanwhile the coefficients for `Too much` political views are also negative, but are farther from 0 for more liberal views. So the log odds of their response being "too much" over "about right" decreases across all political views. The same is true for "too little". But the log odds of responding "too little" and additionally the odds themselves decreases more for those with more conservative political views compared to the baseline of "about right". Meanwhile the odds of responding "too much" decreases more with more liberal people than those with more conservative views. So it looks like those with more conservative views tend to respond with "too much" more than those with more liberal views. Also those with more conservative views tend to respond with "too little" less than those with more liberal views. That being said, overall, both more left and right leaning participants seem to respond with "about right."
 
+Now we will look at the predictions we made.
+```{r}
+full_model_aug %>%
+  group_by(natmass, preds) %>%
+  summarise(n = n()) %>%
+  kable(format="markdown")
+```
+
+So it looks like we misclassified $36 +196 + 645 +2 + 219 = 1098$ of our observations. With 2590 observations in our dataset, we have a missclassificaiton rate of $\frac{1098}{2590} = 0.424$.
+
 
