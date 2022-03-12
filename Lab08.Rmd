@@ -133,11 +133,66 @@ gss <- gss %>%
 pred_probs <- as_tibble(predict(full_model, type = 'probs')) %>%
   mutate(obs_num = 1:n())
 
-full_model_aug <- inner_join(gss, pred_probs, by = 'obs_num') %>%
+
+resid <- as_tibble(residuals(full_model)) %>%
+  mutate(obs_num = 1:n())
+
+full_model_aug <- inner_join(gss, resid, by = 'obs_num') %>%
   mutate(preds = predict(full_model, type = 'class'))
+
+full_model_aug <- inner_join(full_model_aug, pred_probs, by = 'obs_num')
 ```
 
+Note that `About right.x` are the residuals and `About right.y` are the predicted probabilities. Now we will check the linearity assumption for our multinomial logistic regression model.
 
+```{r}
+nbins <- sqrt(nrow(full_model_aug))
 
+arm::binnedplot(x = full_model_aug$'Too little.y', y = full_model_aug$'Too little.x',
+                xlab = "Predicted Probabilities (Too Little)", 
+                main = "Binned Residual vs. Predicted Values for Too Little", 
+                col.int = FALSE)
+
+arm::binnedplot(x = full_model_aug$'About right.y', y = full_model_aug$'About right.x',
+                xlab = "Predicted Probabilities (About Right)", 
+                main = "Binned Residual vs. Predicted Values for About Right", 
+                col.int = FALSE)
+
+arm::binnedplot(x = full_model_aug$'Too much.y', y = full_model_aug$'Too much.x',
+                xlab = "Predicted Probabilities (Too Much)", 
+                main = "Binned Residual vs. Predicted Values for Too Much", 
+                col.int = FALSE)
+```
+
+```{r}
+full_model_aug %>%
+  group_by(sex) %>%
+  summarise(mean_resid_about_right = mean(`Too little.x`),
+            mean_resid_about_right = mean(`About right.x`),
+            mean_resid_about_right = mean(`Too much.x`))
+
+full_model_aug %>%
+  group_by(region) %>%
+  summarise(mean_resid_about_right = mean(`Too little.x`),
+            mean_resid_about_right = mean(`About right.x`),
+            mean_resid_about_right = mean(`Too much.x`))
+
+full_model_aug %>%
+  group_by(polviews) %>%
+  summarise(mean_resid_about_right = mean(`Too little.x`),
+            mean_resid_about_right = mean(`About right.x`),
+            mean_resid_about_right = mean(`Too much.x`))
+```
+Looking at the binned residual plots, there does not appear to be a clear relationship between the binned residuals and predicted probabilities. Looking at the average residuals across the groups for the categorical variables, it looks like the mean residuals are consistent across groups (all around order of 10^{-7} to 10^{-8}). Based off of these plots, there doesn't appear to be any violations to the linearity assumption.
+
+### Using the Model
+
+Now we will take a look at our model.
+
+```{r}
+tidy(full_model, conf.int = TRUE) %>%
+  kable(digits = 3, format = 'markdown')
+```
+Looking at our model, we see the coefficient for the political views for Too little appear to all be negative with those more liberal closer to 0. This suggests that more conservative political views are associated with a lower odds of the response to the prompt being `Too little`. Meanwhile the coefficients for `Too much` political views are also negative, but are farther from 0 for more liberal views. So the log odds of their response being "too much" over "about right" decreases across all political views. The same is true for "too little". But the log odds of responding "too little" and additionally the odds themselves decreases more for those with more conservative political views compared to the baseline of "about right". Meanwhile the odds of responding "too much" decreases more with more liberal people than those with more conservative views. So it looks like those with more conservative views tend to respond with "too much" more than those with more liberal views. Also those with more conservative views tend to respond with "too little" less than those with more liberal views. That being said, overall, both more left and right leaning participants seem to respond with "about right."
 
 
